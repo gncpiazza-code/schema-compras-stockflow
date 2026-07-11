@@ -7,7 +7,6 @@ Documentación del sector **Compras**: estructura PostgreSQL, significado de cad
 | Archivo SQL | [`schema_compras.sql`](schema_compras.sql) |
 | Schema PostgreSQL | `compras` |
 | Schemas relacionados | `public` (auth), `deposito` (almacén) |
-| Origen funcional | standrISO (Flask + SQLite), portado a PostgreSQL nativo |
 
 ---
 
@@ -64,7 +63,7 @@ Solicitud (SC) → Cotización → Orden (OC) → Recepción → Pañol → Sali
 | **`cotizaciones`** | Cabecera de cotización, normalmente ligada a una SC (`solicitud_id` / `nro_solicitud`). Define moneda, tipo de cambio USD/EUR, IVA y estado. Soporta **hasta tres proveedores** en columnas denormalizadas: `prov1_*`, `prov2_*`, `prov3_*` (nombre, condición de entrega, forma de pago, flete). |
 | **`cotizacion_items`** | Ítems cotizados. Por cada línea: descripción, unidad, cantidad e índice opcional hacia el ítem de la SC (`idx_sc`). Precios unitarios y descuentos por proveedor: `pu1/2/3`, `desc1/2/3`, `desctipo1/2/3` (`pct` u otro criterio). |
 
-> El modelo de tres proveedores en columnas es intencional: replica la UI de comparación de standrISO y evita rediseñar pantallas al portar a escritorio.
+> El modelo de tres proveedores en columnas permite comparar ofertas lado a lado en una sola cotización.
 
 ### Orden de compra (OC)
 
@@ -77,8 +76,8 @@ Solicitud (SC) → Cotización → Orden (OC) → Recepción → Pañol → Sali
 
 | Tabla | Descripción |
 |-------|-------------|
-| **`recepciones`** | Cabecera del control de ingreso de mercadería. Relaciona OC y/o SC, fecha de recepción, nombre de proveedor, número de remito y usuario. En standrISO esta entidad se llamaba `stock`. |
-| **`recepcion_items`** | Detalle de la recepción. Compara `cant_pedida` vs `cant_recibida`, guarda precio unitario, estado del ítem, observaciones y `estado_repuesto` (por defecto `A confirmar`). En standrISO: `stock_items`. |
+| **`recepciones`** | Cabecera del control de ingreso de mercadería. Relaciona OC y/o SC, fecha de recepción, nombre de proveedor, número de remito y usuario. |
+| **`recepcion_items`** | Detalle de la recepción. Compara `cant_pedida` vs `cant_recibida`, guarda precio unitario, estado del ítem, observaciones y `estado_repuesto` (por defecto `A confirmar`). |
 
 ### Pañol (inventario de compras / insumos)
 
@@ -95,35 +94,6 @@ Solicitud (SC) → Cotización → Orden (OC) → Recepción → Pañol → Sali
 |-------|-------------|
 | **`stock_salidas`** | Cabecera de egreso del pañol. `nro_salida` único. Incluye fecha, responsable, área destino, motivo, estado, firma (`firma_img`), máquina, tipo de reparación, grupo, horas y motivo de reparación. |
 | **`salida_items`** | Ítems egresados: vínculo a `stock_maestro`, códigos, descripción, cantidad y unidad. Cascada al borrar la salida. |
-
----
-
-## Correspondencia de nombres (standrISO → PostgreSQL)
-
-| SQLite (standrISO) | PostgreSQL (`compras`) |
-|--------------------|-------------------------|
-| `proveedores` | `proveedores` |
-| `solicitudes` | `solicitudes` |
-| `sc_items` | `solicitud_items` |
-| `cotizaciones` | `cotizaciones` |
-| `cot_items` | `cotizacion_items` |
-| `ordenes` | `ordenes` |
-| `oc_items` | `orden_items` |
-| `stock` | `recepciones` |
-| `stock_items` | `recepcion_items` |
-| `stock_maestro` | `stock_maestro` |
-| `stock_movimientos` | `stock_movimientos` |
-| `stock_salidas` | `stock_salidas` |
-| `salida_items` | `salida_items` |
-
-### Cambios de tipo al portar
-
-| Concepto | SQLite | PostgreSQL |
-|----------|--------|------------|
-| Claves primarias | `TEXT` (UUID) | `SERIAL` (entero) |
-| Fechas | `TEXT` | `DATE` / `TIMESTAMP` |
-| Cantidades y precios | `TEXT` / `REAL` | `NUMERIC` |
-| Flags | `INTEGER` 0/1 | `BOOLEAN` |
 
 ---
 
@@ -164,7 +134,7 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Configurar moneda, tipo de cambio USD/EUR e IVA.
 - Comparar ofertas y conservar trazabilidad para la adjudicación.
 - Listar, editar y eliminar cotizaciones.
-- Exportar PDF de cotización (funcionalidad presente en standrISO).
+- Exportar PDF de cotización.
 
 ### 5. Orden de compra (OC)
 
@@ -208,7 +178,7 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 ### 10. Exportaciones
 
 - Exportar solicitudes, órdenes, recepciones, inventario y salidas.
-- Exportación completa (todos los módulos), alineada a standrISO.
+- Exportación completa (todos los módulos).
 
 ### 11. Autenticación y usuarios
 
@@ -246,10 +216,3 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA compras TO stockflow;
 1. **Query Service** (`compras/*.py`): operaciones SQL encapsuladas para que la UI no acceda a la base directamente.
 2. Definir frontera formal entre pañol (`compras.stock_maestro`) y depósito (`deposito.*`).
 3. Seed opcional (rubros / áreas de pedido) si el negocio lo requiere.
-
----
-
-## Referencia de UI
-
-Proyecto web de referencia funcional: **standrISO** (`app.py` + `Index.html`).  
-Contiene pantallas y flujos equivalentes; la base de datos productiva del equipo es este schema PostgreSQL (`compras`).
