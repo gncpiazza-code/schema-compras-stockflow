@@ -211,8 +211,32 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA compras TO stockflow;
 
 ---
 
-## Trabajo pendiente (capa de datos)
+## Query Service
 
-1. **Query Service** (`compras/*.py`): operaciones SQL encapsuladas para que la UI no acceda a la base directamente.
-2. Definir frontera formal entre pañol (`compras.stock_maestro`) y depósito (`deposito.*`).
-3. Seed opcional (rubros / áreas de pedido) si el negocio lo requiere.
+Capa Python entre la UI y PostgreSQL. La interfaz **no escribe SQL**: llama funciones de este paquete.
+
+```
+query_service/
+├── db.py                 # conexión (.env) y helpers
+└── compras/
+    ├── proveedores.py
+    ├── solicitudes.py
+    ├── cotizaciones.py
+    ├── ordenes.py
+    ├── recepciones.py
+    ├── panol.py          # stock_maestro + movimientos
+    ├── salidas.py
+    └── dashboard.py
+```
+
+Ejemplo de uso desde la UI:
+
+```python
+from query_service.compras import solicitudes, proveedores
+
+lista = solicitudes.listar(estado="Pendiente")
+detalle = solicitudes.obtener_por_nro("SC-2026-001")
+proveedores.crear({"razon_social": "Acme SA", "cuit": "30-12345678-9"})
+```
+
+Ver docstrings en cada módulo para la firma completa de operaciones.
