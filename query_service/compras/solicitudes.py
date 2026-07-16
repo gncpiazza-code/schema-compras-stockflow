@@ -135,16 +135,19 @@ def crear(cabecera: dict, items: list[dict]) -> dict:
                 cur.execute(
                     """
                     INSERT INTO compras.solicitud_items (
-                        solicitud_id, cantidad, unidad, codigo_interno,
+                        solicitud_id, codificacion_id, insumo_id,
+                        cantidad, unidad, codigo_interno,
                         nro_plano, descripcion, proveedor_sugerido,
                         fecha_entrega, precio_unitario, observaciones,
                         estado_cot
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     (
                         sc_id,
+                        item.get("codificacion_id"),
+                        item.get("insumo_id"),
                         item["cantidad"],
                         item["unidad"],
                         item.get("codigo_interno"),

@@ -8,6 +8,42 @@
 CREATE SCHEMA IF NOT EXISTS compras;
 
 -- ------------------------------------------------------------
+-- 0. Codificación oficial del sistema
+--     Catálogo maestro: los artículos aquí se nombran SIEMPRE
+--     con este codigo + nombre + descripcion (+ unidad).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS compras.codificacion (
+    id           SERIAL PRIMARY KEY,
+    codigo       VARCHAR(50) NOT NULL UNIQUE,
+    nombre       VARCHAR(255) NOT NULL,
+    descripcion  VARCHAR(255) NOT NULL,
+    unidad       VARCHAR(30) NOT NULL,
+    categoria    VARCHAR(80),
+    activo       BOOLEAN NOT NULL DEFAULT TRUE,
+    creado_en    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ------------------------------------------------------------
+-- 0b. Insumos internos de Compras
+--     Catálogo propio del sector. Puede:
+--       - vincularse a una fila de codificacion (compra de artículo oficial)
+--       - o ser 100% interno (codificacion_id NULL): producto a comprar
+--         que NO cruza con la codificación original.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS compras.insumos (
+    id               SERIAL PRIMARY KEY,
+    codigo           VARCHAR(50),
+    nombre           VARCHAR(255) NOT NULL,
+    descripcion      VARCHAR(255),
+    unidad           VARCHAR(30) NOT NULL DEFAULT 'UN',
+    codificacion_id  INT REFERENCES compras.codificacion(id) ON DELETE SET NULL,
+    activo           BOOLEAN NOT NULL DEFAULT TRUE,
+    usuario_id       INT REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    creado_en        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_insumos_codigo UNIQUE (codigo)
+);
+
+-- ------------------------------------------------------------
 -- 1. Proveedores (catálogo maestro)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS compras.proveedores (
@@ -58,6 +94,9 @@ CREATE TABLE IF NOT EXISTS compras.solicitud_items (
     id                 SERIAL PRIMARY KEY,
     solicitud_id       INT NOT NULL
         REFERENCES compras.solicitudes(id) ON DELETE CASCADE,
+    -- Origen del ítem: codificación oficial y/o insumo interno de Compras
+    codificacion_id    INT REFERENCES compras.codificacion(id) ON DELETE SET NULL,
+    insumo_id          INT REFERENCES compras.insumos(id) ON DELETE SET NULL,
     cantidad           NUMERIC(12, 2) NOT NULL CHECK (cantidad > 0),
     unidad             VARCHAR(30) NOT NULL,
     codigo_interno     VARCHAR(50),
@@ -301,3 +340,21 @@ CREATE INDEX IF NOT EXISTS idx_salida_items_salida
 
 CREATE INDEX IF NOT EXISTS idx_proveedores_razon
     ON compras.proveedores (razon_social);
+
+CREATE INDEX IF NOT EXISTS idx_codificacion_categoria
+    ON compras.codificacion (categoria);
+
+CREATE INDEX IF NOT EXISTS idx_codificacion_nombre
+    ON compras.codificacion (nombre);
+
+CREATE INDEX IF NOT EXISTS idx_insumos_codificacion
+    ON compras.insumos (codificacion_id);
+
+CREATE INDEX IF NOT EXISTS idx_insumos_nombre
+    ON compras.insumos (nombre);
+
+CREATE INDEX IF NOT EXISTS idx_solicitud_items_codificacion
+    ON compras.solicitud_items (codificacion_id);
+
+CREATE INDEX IF NOT EXISTS idx_solicitud_items_insumo
+    ON compras.solicitud_items (insumo_id);

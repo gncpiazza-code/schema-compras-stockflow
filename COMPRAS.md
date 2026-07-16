@@ -16,7 +16,9 @@ Documentación del sector **Compras**: estructura PostgreSQL, significado de cad
 empresa
 ├── public      → roles, usuarios, modulos
 ├── deposito    → áreas, sectores, productos, lotes, stock, movimientos
-└── compras     → proveedores, SC, cotizaciones, OC, recepciones, pañol, salidas
+└── compras
+        ├── codificacion          ← catálogo oficial (código + nombre + descripción)
+        ├── insumos               ← catálogo interno de Compras (puede o no cruzar con codificación)
         ├── proveedores
         ├── solicitudes + solicitud_items
         ├── cotizaciones + cotizacion_items
@@ -39,11 +41,74 @@ Solicitud (SC) → Cotización → Orden (OC) → Recepción → Pañol → Sali
 5. El material ingresa al **pañol** (`stock_maestro`).
 6. Las **salidas** descuentan stock hacia un área o máquina.
 
+### Relación codificación ↔ insumos ↔ pedidos
+
+```
+codificacion (maestro oficial del sistema)
+      │
+      │  opcional: Compras “toma” un artículo oficial
+      ▼
+insumos (catálogo interno de Compras)
+      │  • con codificacion_id  → usa nombre oficial
+      │  • sin codificacion_id  → producto solo de Compras
+      ▼
+solicitud_items / OC / recepción  (documentos de compra)
+```
+
 ---
 
 ## Explicación de cada tabla
 
-### Catálogo
+### `codificacion` — catálogo oficial
+
+Maestro de artículos del sistema. Lo que figura acá se nombra **siempre** igual en toda la app: no se inventan alias ni se reescriben descripciones en pantallas.
+
+| Campo | Uso |
+|-------|-----|
+| `codigo` | Código genérico único (ej. `40000001`) |
+| `nombre` | Nombre oficial del artículo |
+| `descripcion` | Descripción oficial (misma forma canónica que el nombre en el seed actual) |
+| `unidad` | Unidad de medida (`UN`, `KG`, `BO`, `MI`, `RO`, …) |
+| `categoria` | Agrupación de negocio |
+| `activo` | Baja lógica sin borrar el código |
+
+**Categorías cargadas en el seed:**
+
+| Categoría | Ejemplos de códigos |
+|-----------|---------------------|
+| PRODUCTO TERMINADO | `00000001` … |
+| INSUMOS | `40000000` … |
+| VARIOS | `10000001` … |
+| PRODUCTOS REVENTA | `20000001`, `30000001` … |
+
+**Seed:** [`datos_codificacion.sql`](datos_codificacion.sql) — 84 artículos desde el Excel de codificación del sistema.  
+**Migración** (bases ya instaladas): [`migration_codificacion.sql`](migration_codificacion.sql) + volver a correr el seed.
+
+**Regla de UI:** al mostrar o elegir un artículo codificado, usar exactamente `codigo` + `nombre` + `descripcion` (+ `unidad`).
+
+### `insumos` — catálogo interno de Compras
+
+Tabla propia del sector Compras. Se **alimenta** de `codificacion` cuando corresponde, pero también permite cargar productos que **no existen** en la codificación oficial.
+
+| Campo | Uso |
+|-------|-----|
+| `codigo` | Código interno de Compras (opcional; único si se informa) |
+| `nombre` | Nombre del insumo en Compras |
+| `descripcion` | Descripción (en vinculados, copia del oficial) |
+| `unidad` | Unidad de medida |
+| `codificacion_id` | FK a `codificacion`. `NULL` = insumo 100% interno |
+| `activo` | Baja lógica |
+
+**Dos modos:**
+
+| Modo | `codificacion_id` | Significado |
+|------|-------------------|-------------|
+| Vinculado al oficial | seteado | Compras compra un artículo de la codificación. Nombre/descripcion/unidad deben respetar el maestro. |
+| Interno puro | `NULL` | Producto a comprar que **no cruza** con la codificación original (repuestos sueltos, servicios, ítems nuevos, etc.). Compras lo alta y gestiona libremente. |
+
+Los ítems de solicitud (`solicitud_items`) pueden apuntar a `codificacion_id` y/o `insumo_id` para dejar trazabilidad del origen del artículo.
+
+### Proveedores
 
 | Tabla | Descripción |
 |-------|-------------|
@@ -54,7 +119,7 @@ Solicitud (SC) → Cotización → Orden (OC) → Recepción → Pañol → Sali
 | Tabla | Descripción |
 |-------|-------------|
 | **`solicitudes`** | Cabecera de la solicitud. Identificador de negocio: `nro_solicitud` (único). Incluye fecha, área pedidora, solicitante, rubro, prioridad (`BAJA` / `MEDIA` / `ALTA` / `URGENTE`), tipo de cambio, estado (por defecto `Pendiente`), creador y `check_pedido` (marca de control interno). |
-| **`solicitud_items`** | Líneas de la SC. Cada fila: cantidad, unidad, código interno, nro. de plano, descripción, proveedor sugerido, fecha de entrega deseada, precio unitario de referencia, observaciones y `estado_cot` (seguimiento respecto de la cotización). FK `solicitud_id` con borrado en cascada. |
+| **`solicitud_items`** | Líneas de la SC. Cada fila: cantidad, unidad, código interno, nro. de plano, descripción, proveedor sugerido, fecha de entrega deseada, precio unitario de referencia, observaciones y `estado_cot`. Opcionalmente referencia `codificacion_id` y/o `insumo_id` (origen del artículo). FK `solicitud_id` con borrado en cascada. |
 
 ### Cotización comparativa
 
@@ -108,17 +173,31 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Listar los últimos documentos creados.
 - Exponer indicadores básicos (por ejemplo OTIF, si se implementa).
 
-### 2. Proveedores
+### 2. Codificación oficial
+
+- Consultar / buscar por código, nombre o categoría.
+- Al elegir un artículo codificado, la UI debe mostrar **exactamente** `codigo` + `nombre` + `descripcion` (+ unidad).
+- No editar a mano la denominación oficial desde Compras (el maestro se mantiene vía seed/migración).
+
+### 3. Insumos internos de Compras
+
+- Listar insumos (todos / solo internos / solo vinculados a codificación).
+- Alta de insumo **interno** (sin `codificacion_id`): productos a comprar fuera del maestro oficial.
+- Alta de insumo **desde codificación**: copia nombre/descripcion/unidad oficiales.
+- Editar insumos internos; en vinculados, no alterar nombre/descripcion/unidad.
+- Baja lógica / eliminación controlada.
+
+### 4. Proveedores
 
 - Listar y buscar proveedores.
 - Alta y edición de datos fiscales y de contacto (razón social, CUIT, rubro, observaciones, etc.).
 - Carga y edición de puntajes (entrega, calidad, respuesta, precio).
 - Baja lógica (`activo = false`) o eliminación controlada.
 
-### 3. Solicitud de compra (SC)
+### 5. Solicitud de compra (SC)
 
 - Crear SC con cabecera (área, solicitante, rubro, prioridad).
-- Agregar, editar y quitar ítems.
+- Agregar, editar y quitar ítems (eligiendo desde codificación, desde insumos, o libre).
 - Generar o sugerir el próximo `nro_solicitud`.
 - Cambiar estado (Pendiente → en proceso / cerrada / anulada).
 - Registrar check de pedido (`check_pedido`).
@@ -126,7 +205,7 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Editar SC existente según reglas de estado.
 - Eliminar SC (cascada de ítems; validar que no existan OC o cotización vinculadas).
 
-### 4. Cotización
+### 6. Cotización
 
 - Crear cotización a partir de una SC.
 - Cargar hasta 3 proveedores con condiciones (entrega, pago, flete).
@@ -136,7 +215,7 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Listar, editar y eliminar cotizaciones.
 - Exportar PDF de cotización.
 
-### 5. Orden de compra (OC)
+### 7. Orden de compra (OC)
 
 - Generar OC desde una SC (típicamente tras cotizar).
 - Asignar proveedor adjudicado.
@@ -145,7 +224,7 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Listar, editar y eliminar OC.
 - Exportar PDF de OC.
 
-### 6. Recepción / control de stock
+### 8. Recepción / control de stock
 
 - Registrar recepción contra SC u OC (fecha, remito, proveedor).
 - Cargar cantidad pedida vs recibida por ítem.
@@ -153,14 +232,14 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Listar, corregir y eliminar recepciones.
 - Opcional: al confirmar recepción, impactar `stock_maestro` mediante un movimiento de ingreso.
 
-### 7. Pañol (inventario)
+### 9. Pañol (inventario)
 
 - ABM de ítems en `stock_maestro` (código, descripción, cantidad, ubicación).
 - Consultar movimientos del pañol.
 - Resumen de existencias y, si se define regla de negocio, alertas de stock bajo.
 - Exportar inventario a Excel.
 
-### 8. Salidas de pañol
+### 10. Salidas de pañol
 
 - Crear salida (área, responsable, máquina, motivo / reparación).
 - Descontar ítems de `stock_maestro` y registrar el movimiento correspondiente.
@@ -169,18 +248,18 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 - Listar y eliminar salidas.
 - Exportar PDF de salida y/o Excel.
 
-### 9. Registros e historial
+### 11. Registros e historial
 
 - Vista acumulativa de SC, OC, cotizaciones, recepciones y salidas.
 - Filtros por fecha, estado, área y proveedor.
 - Apertura de documento completo (cabecera + ítems).
 
-### 10. Exportaciones
+### 12. Exportaciones
 
 - Exportar solicitudes, órdenes, recepciones, inventario y salidas.
 - Exportación completa (todos los módulos).
 
-### 11. Autenticación y usuarios
+### 13. Autenticación y usuarios
 
 - Login contra `public.usuarios` (no existe tabla de usuarios dentro de `compras`).
 - Respetar roles definidos en `public.roles` (`admin`, `operador`, `auditor`).
@@ -191,12 +270,20 @@ Capacidades funcionales esperadas en la aplicación de escritorio.
 
 ### Con el instalador StockFlow
 
-El instalador crea el schema `compras`, ejecuta `schema_compras.sql` y asigna permisos al usuario de aplicación, junto con `public` y `deposito`.
+El instalador crea el schema `compras`, ejecuta `schema_compras.sql`, carga `datos_iniciales.sql` + `datos_codificacion.sql`, y asigna permisos al usuario de aplicación (`public`, `deposito`, `compras`).
 
 ### Manual (psql)
 
 ```bash
 psql -U postgres -d empresa -f schema_compras.sql
+psql -U postgres -d empresa -f datos_codificacion.sql
+```
+
+Bases ya existentes (solo parche de catálogos):
+
+```bash
+psql -U postgres -d empresa -f migration_codificacion.sql
+psql -U postgres -d empresa -f datos_codificacion.sql
 ```
 
 Permisos tipicos para el usuario de aplicación (`stockflow`):
@@ -219,6 +306,8 @@ Capa Python entre la UI y PostgreSQL. La interfaz **no escribe SQL**: llama func
 query_service/
 ├── db.py                 # conexión (.env) y helpers
 └── compras/
+    ├── codificacion.py   # catálogo oficial (solo lectura / consulta)
+    ├── insumos.py        # catálogo interno de Compras
     ├── proveedores.py
     ├── solicitudes.py
     ├── cotizaciones.py
@@ -232,10 +321,12 @@ query_service/
 Ejemplo de uso desde la UI:
 
 ```python
-from query_service.compras import solicitudes, proveedores
+from query_service.compras import solicitudes, proveedores, codificacion, insumos
 
 lista = solicitudes.listar(estado="Pendiente")
-detalle = solicitudes.obtener_por_nro("SC-2026-001")
+oficiales = codificacion.listar(categoria="INSUMOS", busqueda="papel")
+insumos.crear_interno({"nombre": "Guantes nitrilo M", "unidad": "UN"})
+insumos.crear_desde_codificacion(oficiales[0]["id"])
 proveedores.crear({"razon_social": "Acme SA", "cuit": "30-12345678-9"})
 ```
 

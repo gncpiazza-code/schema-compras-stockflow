@@ -1,8 +1,10 @@
 """Operaciones del schema compras."""
 
 from query_service.compras import (
+    codificacion,
     cotizaciones,
     dashboard,
+    insumos,
     ordenes,
     panol,
     proveedores,
@@ -12,8 +14,10 @@ from query_service.compras import (
 )
 
 __all__ = [
+    "codificacion",
     "cotizaciones",
     "dashboard",
+    "insumos",
     "ordenes",
     "panol",
     "proveedores",

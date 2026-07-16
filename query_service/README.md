@@ -21,6 +21,8 @@ También se puede apuntar el archivo con `STOCKFLOW_ENV=/ruta/.env`.
 
 | Módulo | Responsabilidad |
 |--------|-----------------|
+| `codificacion` | Catálogo oficial (código/nombre/descripcion) |
+| `insumos` | Catálogo interno Compras (con o sin vínculo a codificación) |
 | `proveedores` | ABM catálogo |
 | `solicitudes` | SC + ítems, numeración, estados |
 | `cotizaciones` | Cotización comparativa 3 proveedores |
